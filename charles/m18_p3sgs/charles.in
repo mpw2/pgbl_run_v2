@@ -1,0 +1,106 @@
+RUNTIME (1+55/60)
+
+# Domain
+DEFINE XIN 200
+DEFINE XOUT 2500
+DEFINE YTOP 250
+DEFINE LZ 250
+DEFINE LY 250
+
+# Reference Conditions
+DEFINE RHO_REF 1.0
+DEFINE U_REF 1.0
+DEFINE NU_REF (1/450)
+DEFINE MA 0.2
+DEFINE T_REF 1.0
+
+DEFINE P_REF (($(RHO_REF)*$(U_REF)^2)/(1.4*$(MA)^2))
+
+# Inflow Conditions
+DEFINE DELTA_IN 8.44341176
+DEFINE DELTA_STAR_IN 1.55944264
+DEFINE VDOT_PER_SPAN ($(U_REF)*($(LY)-$(DELTA_STAR_IN)))
+
+DEFINE DELTA_OUT 109 # approx. outflow BL thickness
+
+# Solver Parameters
+DEFINE sync_int 1000
+
+SKEW_OPS
+ZERO 1e-7
+MPI_DEV2DEV
+SYNC_INTERVAL $(sync_int)
+CHECK_INTERVAL 100
+
+# Equation of State
+# Ideal Gas
+RHO_REF $(RHO_REF)
+P_REF $(P_REF)
+T_REF $(T_REF)
+MU_REF ($(NU_REF)*$(RHO_REF))
+
+# Restart File
+RESTART ../../stitch/m18/grid.mles sles
+#INIT_RUP $(RHO_REF) $(U_REF) 0.0 0.0 $(P_REF)
+#RESTART ../../stitch/m18/grid.mles
+
+SGS_MODEL DSM
+
+# Boundary Conditions
+
+# inflow
+#X0 CBC_PROFILE FILE_NAME m18_inflow.txt P $(P_REF) RHO $(RHO_REF)
+X0 RECYCLE_RESCALE_BC DX 80 0 (0.5*$(LZ)) \
+    MDOT ($(RHO_REF)*$(VDOT_PER_SPAN)*$(LZ)) \
+    RHO $(RHO_REF) P $(P_REF) LZ $(LZ) \
+    LY $(LY) DELTA_IN $(DELTA_IN) \
+    RE_DELTA_IN ($(U_REF)*$(DELTA_IN)/$(NU_REF)) \
+    T_MEAN ($(DELTA_OUT)/$(U_REF)) \
+    FILE_NAME m18_inflow.txt \
+    FORMAT FLUENT_PROFILE
+
+# outflow
+X1 NSCBC_OUTLET_PRESSURE P_REF $(P_REF) L ($(XOUT)-$(XIN))
+
+# freestream
+Y1 CBC_PROFILE FILE_NAME m18_top.txt P ($(P_REF)+0.5*$(RHO_REF)*$(U_REF)^2) RHO $(RHO_REF)
+
+# wall
+Y0 WM_SLIP_ISOTHERMAL T $(T_REF) T_AVG -1.0 PARAM2 NO_DAMP SGS_SLIP
+
+# Time Integration
+TIMESTEP CFL 3.0
+
+STATS u p rho T
+
+WRITE_SLES NAME snap/result INTERVAL 100000
+
+# Diagnostics
+
+CONDITIONAL_PROBE NAME cprobe/wall SAMPLE_INTERVAL $(sync_int) \
+    WRITE_INTERVAL 20000 RESET_AFTER_WRITE CVAR comp(y0:x_bf,0) \
+    NBINS 100 \
+    VARS y0:proj(p) y0:y_plus() y0:tau_wall() \
+        y0:tau_wall(0) y0:tau_wall(1) y0:tau_wall(2) \
+        y0:proj(mu_sgs) y0:proj(mu_lam)
+
+BLDE L_BL 120 NBL 120
+
+CONDITIONAL_PROBE NAME cprobe/bl_delta SAMPLE_INTERVAL $(sync_int) \
+    WRITE_INTERVAL 20000 RESET_AFTER_WRITE CVAR comp(y0:x_bf,0) \
+    NBINS 100 VARS y0:bl_delta y0:bl_delta_star y0:bl_theta
+
+# Images
+
+WRITE_IMAGE NAME images/magu INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR mag(u) SIZE 2240 140
+
+WRITE_IMAGE NAME images/p    INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR p      SIZE 2240 140
+
+WRITE_IMAGE NAME images/ux   INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR comp(u,0) SIZE 2240 140
+WRITE_IMAGE NAME images/uy   INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR comp(u,1) SIZE 2240 140
+
+#WRITE_IMAGE NAME fast_images/u INTERVAL $(sync_int) GEOM PLANE 201 70 70 1 0 0 UP 0 1 0 CAMERA 1000 70 70 TARGET 200 70 70 WIDTH 300 VAR comp(u,0)
+#WRITE_IMAGE NAME fast_images/ux   INTERVAL $(sync_int) GEOM Z_PLANE_FRAC 0.5 VAR comp(u,0) SIZE 2240 140
+
+
+
