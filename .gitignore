@@ -1,0 +1,39 @@
+
+# mesh files
+*.mles
+*.sbin
+*.ply
+
+# snapshots
+*.sles
+**/sles
+
+# data files
+*.cp
+*.pcd
+*.pbin
+*.README
+*.tar
+*.tar.gz
+**/dpprobe/**
+**/stitch.[0-9][0-9]*
+*.dat
+**/probe/**
+**/probes/**
+**/history.txt
+stitch/**/*.txt
+
+# tecplot
+*.plt
+
+# log files
+*.o
+*.out
+*.e
+*.err
+**/core.*
+**/core
+
+# images
+*.png
+

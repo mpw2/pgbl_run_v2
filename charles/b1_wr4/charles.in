@@ -1,0 +1,154 @@
+RUNTIME (1+55/60)
+#RESET_STATS
+
+# Domain
+DEFINE XIN 200
+DEFINE XOUT 2500
+DEFINE LZ 140
+DEFINE LY 140
+
+# Reference Conditions
+DEFINE RHO_REF 1.0
+DEFINE U_REF 1.0
+DEFINE NU_REF (1/450)
+DEFINE MA 0.2
+DEFINE T_REF 1.0
+
+DEFINE P_REF (($(RHO_REF)*$(U_REF)^2)/(1.4*$(MA)^2))
+
+# Inflow Conditions
+DEFINE DELTA_IN 8.20007194
+DEFINE DELTA_STAR_IN 1.51140055
+#DEFINE VDOT_PER_SPAN ($(U_REF)*($(LY)-$(DELTA_STAR_IN))) # slightly high estimate
+DEFINE VDOT_PER_SPAN 137.79649972 # inlet
+DEFINE VOUT_PER_SPAN 81.224064626290897 # computed from Bobke data
+
+DEFINE DELTA_OUT 77 # approx. outflow BL thickness
+
+# Solver Parameters
+DEFINE sync_int 1000
+
+SKEW_OPS
+ZERO 1e-7
+MPI_DEV2DEV
+SYNC_INTERVAL $(sync_int)
+CHECK_INTERVAL 100
+
+# Equation of State
+# Ideal Gas
+RHO_REF $(RHO_REF)
+P_REF $(P_REF)
+T_REF $(T_REF)
+MU_REF ($(NU_REF)*$(RHO_REF))
+
+# Restart File
+RESTART ../../stitch/b1_wr4/grid.mles sles
+#INIT_RUP $(RHO_REF) $(U_REF) 0.0 0.0 $(P_REF)
+#RESTART ../../stitch/b1_wr4/grid.mles
+#INTERP_FROM_RESTART sles
+
+SGS_MODEL DSM
+
+# Boundary Conditions
+
+# inflow
+#X0 CBC_PROFILE FILE_NAME b1_inflow.txt P $(P_REF) RHO $(RHO_REF)
+X0 RECYCLE_RESCALE_BC DX 160 0 (0.5*$(LZ)) \
+    MDOT ($(RHO_REF)*$(VDOT_PER_SPAN)*$(LZ)) \
+    RHO $(RHO_REF) P ($(P_REF)+0.5*$(RHO_REF)*$(U_REF)^2) LZ $(LZ) \
+    LY $(LY) DELTA_IN $(DELTA_IN) \
+    RE_DELTA_IN ($(U_REF)*$(DELTA_IN)/$(NU_REF)) \
+    T_MEAN ($(DELTA_OUT)/$(U_REF)) \
+    FILE_NAME b1_inflow.txt \
+    FORMAT FLUENT_PROFILE
+
+# outflow
+#X1 NSCBC_OUTLET_PRESSURE P_REF $(P_REF) L ($(XOUT)-$(XIN))
+
+X1 NSCBC_OUTLET_MDOT T_RELAX ($(DELTA_OUT)/$(U_REF)) MDOT $(LZ)*$(VOUT_PER_SPAN)
+
+# freestream
+Y1 CBC_PROFILE FILE_NAME b1_top.txt P ($(P_REF)+0.5*$(RHO_REF)*$(U_REF)^2) RHO $(RHO_REF)
+
+# wall
+#Y0 WM_ALG_ISOTHERMAL T $(T_REF)
+Y0 WALL_ADIABATIC
+
+# slip wall at outflow
+#SLIP SLIP
+Y0_SPLIT SLIP
+Y1_SPLIT SLIP
+
+# Time Integration
+TIMESTEP CFL 3.0
+
+STATS u p rho T
+
+WRITE_SLES NAME snap/result INTERVAL 100000
+
+# Diagnostics
+
+CONDITIONAL_PROBE NAME cprobe/wall SAMPLE_INTERVAL $(sync_int) \
+    WRITE_INTERVAL 20000 RESET_AFTER_WRITE CVAR comp(y0:x_bf,0) \
+    NBINS 100 \
+    VARS y0:proj(p) y0:y_plus() y0:tau_wall() \
+        y0:tau_wall(0) y0:tau_wall(1) y0:tau_wall(2) \
+        y0:proj(mu_sgs) y0:proj(mu_lam)
+
+BLDE L_BL 80 NBL 80
+
+CONDITIONAL_PROBE NAME cprobe/bl_delta SAMPLE_INTERVAL $(sync_int) \
+    WRITE_INTERVAL 20000 RESET_AFTER_WRITE CVAR comp(y0:x_bf,0) \
+    NBINS 100 VARS y0:bl_delta y0:bl_delta_star y0:bl_theta y0:bl_u_e
+
+CONDITIONAL_PROBE NAME cprobe/top SAMPLE_INTERVAL $(sync_int) \
+    WRITE_INTERVAL 20000 RESET_AFTER_WRITE CVAR comp(x_cv,0) \
+    GEOM BOX 200 2500 ($(LY)-10) $(LY) 0 $(LZ) \
+    NBINS 100 VARS comp(u,0) comp(u,1) comp(avg(u),0) comp(avg(u),1) p avg(p)
+
+CONDITIONAL_PROBE NAME cprobe_prof/x1 SAMPLE_INTERVAL $(sync_int) \
+    WRITE_INTERVAL 20000 RESET_AFTER_WRITE CVAR comp(x_cv,1) \
+    GEOM BOX 200 210 0 $(LY) 0 $(LZ) NBINS 140 \
+    VARS comp(u,0) comp(u,1) p comp(avg(u),0) comp(avg(u),1) avg(p)
+
+CONDITIONAL_PROBE NAME cprobe_prof/xout SAMPLE_INTERVAL $(sync_int) \
+    WRITE_INTERVAL 20000 RESET_AFTER_WRITE CVAR comp(x_cv,1) \
+    GEOM BOX 2490 2500 0 $(LY) 0 $(LZ) NBINS 140 \
+    VARS comp(u,0) comp(u,1) p comp(avg(u),0) comp(avg(u),1) avg(p)
+
+#PROBE NAME probe/x0500 INTERVAL 20000 GEOM LINE  500 0 ($(LZ)/2)  500 $(LY) ($(LZ)/2) 500 \
+#    VARS comp(avg(u),0) comp(avg(u),1) comp(avg(u),2) avg(p) comp(x_cv,0) comp(x_cv,1) comp(x_cv,2)
+#PROBE NAME probe/x1000 INTERVAL 20000 GEOM LINE 1000 0 ($(LZ)/2) 1000 $(LY) ($(LZ)/2) 500 \
+#    VARS comp(avg(u),0) comp(avg(u),1) comp(avg(u),2) avg(p) comp(x_cv,0) comp(x_cv,1) comp(x_cv,2)
+#PROBE NAME probe/x1500 INTERVAL 20000 GEOM LINE 1500 0 ($(LZ)/2) 1500 $(LY) ($(LZ)/2) 500 \
+#    VARS comp(avg(u),0) comp(avg(u),1) comp(avg(u),2) avg(p) comp(x_cv,0) comp(x_cv,1) comp(x_cv,2)
+#PROBE NAME probe/x2000 INTERVAL 20000 GEOM LINE 2000 0 ($(LZ)/2) 2000 $(LY) ($(LZ)/2) 500 \
+#    VARS comp(avg(u),0) comp(avg(u),1) comp(avg(u),2) avg(p) comp(x_cv,0) comp(x_cv,1) comp(x_cv,2)
+
+# Images
+
+WRITE_IMAGE NAME images/magu INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR mag(u) SIZE 2240 140
+
+WRITE_IMAGE NAME images/p    INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR p      SIZE 2240 140
+
+WRITE_IMAGE NAME images/ux   INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR comp(u,0) SIZE 2240 140
+WRITE_IMAGE NAME images/uy   INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR comp(u,1) SIZE 2240 140
+
+WRITE_IMAGE NAME images/avgux INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR comp(avg(u),0) SIZE 2240 140
+WRITE_IMAGE NAME images/avguy INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR comp(avg(u),1) SIZE 2240 140
+WRITE_IMAGE NAME images/avgp INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR avg(p) SIZE 2240 140
+
+WRITE_IMAGE NAME images/delta_star INTERVAL 5000 TARGET 1350 0 70 CAMERA 1350 70 70 UP 0 0 -1 WIDTH 2550 SIZE 2240 140 VAR_ON_SURFACE *:bl_delta_star
+WRITE_IMAGE NAME images/delta_99 INTERVAL 5000 TARGET 1350 0 70 CAMERA 1350 70 70 UP 0 0 -1 WIDTH 2550 SIZE 2240 140 VAR_ON_SURFACE *:bl_delta
+WRITE_IMAGE NAME images/u_edge INTERVAL 5000 TARGET 1350 0 70 CAMERA 1350 70 70 UP 0 0 -1 WIDTH 2550 SIZE 2240 140 VAR_ON_SURFACE *:bl_u_e
+
+WRITE_IMAGE NAME images/u_compensated INTERVAL 5000 GEOM Z_PLANE_FRAC 0.5 VAR comp(avg(u),0)/(min(1.9311*pow(max(comp(x_cv,0)-240,1),-0.14),1.0)) SIZE 2240 140
+
+WRITE_IMAGE NAME images/zmzoom_magu INTERVAL 5000 GEOM PLANE 2500 70 70 0 0 1 TARGET 2500 70 70 CAMERA 2500 70 140 UP 0 1 0 WIDTH 150 SIZE 1200 1200 VAR mag(u) CELL_FLOODED
+WRITE_IMAGE NAME images/zmzoom_cf INTERVAL 5000 TARGET 2500 0 70 CAMERA 2500 70 70 UP 0 0 -1 WIDTH 150 SIZE 1200 1200 VAR_ON_SURFACE 2*(*:tau_wall(0)) CELL_FLOODED
+
+#WRITE_IMAGE NAME fast_images/u INTERVAL $(sync_int) GEOM PLANE 201 70 70 1 0 0 UP 0 1 0 CAMERA 1000 70 70 TARGET 200 70 70 WIDTH 300 VAR comp(u,0)
+#WRITE_IMAGE NAME fast_images/ux   INTERVAL $(sync_int) GEOM Z_PLANE_FRAC 0.5 VAR comp(u,0) SIZE 2240 140
+
+
+

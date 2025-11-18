@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH -A CFD209
+#SBATCH -J stitch_m16
+#SBATCH -o log-%x-%j.out
+#SBATCH --mail-type=BEGIN,END
+#SBATCH --mail-user=mpw2@stanford.edu
+#SBATCH -t 0:20:00
+#SBATCH -p batch
+#SBATCH -q debug
+#SBATCH -N 8
+
+date
+
+srun -N 8 -n 448 --ntasks-per-node 56 /ccs/proj/$PROJ_CODE/mpw2/cascade/usr_dev/cascade/bin/stitch.exe
+
+date
+
